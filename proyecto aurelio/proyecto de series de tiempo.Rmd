@@ -1,0 +1,267 @@
+---
+title: "serie de tiempo de exportaciones"
+author: "Aurelio Reyna Hernandez"
+date: "2022-12-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#Exportaciones netas
+
+#### librerias del proyecto
+```{r,echo=TRUE,message=FALSE, warning=FALSE}
+library(lubridate)
+library(tidyverse)
+library(tseries)
+library(quantmod)
+library(astsa)
+library(forecast)
+library(quantmod)
+library(mFilter)
+library(nortest)
+```
+
+### cargamos los datos la serie 
+
+```{r}
+exportaciones <- read.csv("serie limpia.csv")
+
+exportaciones <-exportaciones %>% select(Exportaciones..totales)
+
+head(exportaciones, 10)
+```
+
+
+### convertimos en objeto serie de tiempo y graficamos
+
+```{r}
+time_exportaciones <- ts(exportaciones, start = c(1993, 1), frequency = 12)
+
+plot(time_exportaciones, col="skyblue")
+
+
+```
+
+R:La prueba grafica nos dice que la serie no es estacionaria debido al hecho  de que la serie pose una tendencia y se asume que su media y desviacion no es la misma a lo largo de la serie.
+
+
+### decomposicion de la serie en en el factor ciclico y el factor tendencial
+
+#### filtro hodick-prescott
+
+
+```{r}
+hp.filtered <- hpfilter(exportaciones, freq=12)
+plot(hp.filtered)
+```
+
+la tendencia de la serie es a la alza y la tryctoria del componente ciclico es divergente por lo que parece ser que el modelo optimo por el momento va a ser un modelo arima como primer paso vamos a correr la prueba de dickye-fuller 
+
+#### planteamiento de hipotesis 
+
+$$\left\{
+\begin{array}{ll}
+H_0: &  > 0.5 & no & estacionaria & (raiz & unitaria)\\ 
+H_1: & <  0.5 & es & estacionaria\\
+\end{array}
+\right.$$
+
+pero antes debemos usar un logaritmo para observar si la serie se vuelve estacionaria
+
+```{r}
+serlog <- log(time_exportaciones)
+plot(serlog)
+```
+
+
+### prueba de dickey-fuller para la serie con logaritmo 
+
+```{r}
+adf.test(serlog, alternative = "stationary")
+adf.test(time_exportaciones, alternative = "stationary")
+```
+
+
+La prueba Dickey-Fuller en la serie logaritmica(linealizada) de las exportaciones nos indica que la serie no es estacionaria ya que el p-value(0.09315) > 0.05.
+
+sin embargo la prueba estadistica en la serie no logaritmica es muy proxima ya que el p-value(0.05248)es muy cercano al 0.5 por lo que se podria decir que la serie solo podria requerir una diferencia paravolverse estacionaria.
+
+conclusion: no existen evidencias suficientes para rechazar la hipotesis nula:la serie no es estacionaria y cuenta con raices unitarias.
+
+# inducimos estacionariedad 
+
+### primera diferencia y grafica en la serie logaritmica
+```{r}
+#diferencia en la serie con logaritmo
+diflog1 <- diff(serlog)
+#diferencia en la serie sin logaritmo
+dif1 <- diff(time_exportaciones)
+
+plot(diflog1, col="green")
+```
+
+
+### grafica de la diferencia en la serie exportaciones
+
+```{r}
+plot(dif1, col="red")
+```
+
+
+#### volvemos a usar la prueba de Dickey-fuller
+
+```{r}
+#prueba para la primera diferncia con logaritmo
+adf.test(diflog1, alternative = "stationary")
+#prueba para la primea diferncia sin logaritmo
+adf.test(dif1, alternative = "stationary")
+```
+
+en ambas pruebas el p-valor(0.01)<0.05 por lo que concluimos que no existen evidencias suficientes para rechazar la hipotesis alternativa
+
+
+### Funcion de autocorrelacion y funcion de autocorrelacion parcial 
+
+```{r}
+acf(diflog1)
+
+```
+
+
+
+
+```{r}
+pacf(diflog1)
+
+```
+
+
+
+#MODELO
+
+
+```{r}
+arimar.ts <- arima(time_exportaciones, order = c(2,1,2))
+arimar.ts
+```
+
+
+```{r}
+arimar1m <- arima(time_exportaciones, order=c(1,1,1))
+arimar1m
+
+```
+
+```{r}
+tsdiag(arimar.ts)
+```
+
+
+###diagnostico del modelo 2
+
+
+```{r}
+tsdiag(arimar1m)
+```
+
+
+
+
+### pruebas de ruido blanco
+
+```{r}
+Box.test(arimar.ts$residuals, type="Ljung-Box")
+```
+
+
+
+```{r}
+Box.test(arimar1m$residuals, type="Ljung-Box")
+```
+
+
+```{r}
+plot(arimar.ts$residuals)
+```
+
+```{r}
+plot(arimar1m$residuals)
+```
+
+
+
+```{r}
+plot(arimar.ts)
+plot(arimar1m)
+```
+
+
+
+
+
+
+```{r}
+confint(arimar.ts)
+arimar.ts
+```
+
+
+```{r}
+confint(arimar1m)
+arimar1m
+```
+
+
+###modelo con autoarima 
+```{r}
+algorarim <- auto.arima(time_exportaciones)
+algorarim
+```
+
+###grafica de los residuos
+```{r}
+plot(algorarim$residuals)
+```
+
+
+```{r}
+Box.test(algorarim$residuals, type = "Box-Pierce")
+```
+
+
+###Grafica del modelo Sarima
+
+```{r}
+plot(algorarim)
+```
+
+
+```{r}
+arkans <- arima(time_exportaciones, order=c(4,1,4))
+arkans
+```
+
+
+```{r}
+tsdiag(arkans)
+```
+
+
+```{r}
+Box.test(arkans$residuals, type="Ljung-Box")
+plot(arkans$residuals)
+```
+```{r}
+mean(arkans$residuals)
+sd(arkans$residuals)
+```
+
+
+
+
+
+
